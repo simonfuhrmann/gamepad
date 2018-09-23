@@ -14,7 +14,7 @@ void device_attached(gamepad::Device* device) {
 }
 
 void device_detached(gamepad::Device* device) {
-  std::cout << "Detached" << std::endl;
+  std::cout << "Detached ID " << device->device_id << std::endl;
 }
 
 void print_device_state(gamepad::Device* device) {
@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
 
   while (true) {
     gamepad->ProcessEvents();
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
   return 0;
