@@ -23,6 +23,7 @@ struct EvdevAxisInfo {
 
 struct EvdevDevice {
   std::string filename;
+  int file_descriptor = -1;
   struct libevdev* evdev = nullptr;
   Device device;
   std::vector<EvdevKeyInfo> key_map;
@@ -38,9 +39,10 @@ class SystemImpl : public System {
 
  private:
   void Initialize();
-  void InitializeEvdev(const std::string& filename);
-  void ReadEvdevInputs();
-  void ProcessEvdevEvent(EvdevDevice* device, const struct input_event& event);
+  void EvdevCleanup(EvdevDevice* device);
+  void EvdevInitialize(const std::string& filename);
+  void EvdevReadInputs();
+  void EvdevProcessEvent(EvdevDevice* device, const struct input_event& event);
 
  private:
   bool initialized_ = false;

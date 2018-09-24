@@ -11,7 +11,7 @@
 
 namespace gamepad {
 namespace {
-void PrintEventBits(struct libevdev* dev, unsigned int type, unsigned int max) {
+void EvdevPrintEventBits(struct libevdev* dev, unsigned int type, unsigned int max) {
 	for (unsigned int i = 0; i <= max; i++) {
 		if (!libevdev_has_event_code(dev, type, i))
 			continue;
@@ -27,7 +27,7 @@ void PrintEventBits(struct libevdev* dev, unsigned int type, unsigned int max) {
 	}
 }
 
-void DebugPrintDevice(struct libevdev* evdev) {
+void EvdevPrintEvents(struct libevdev* evdev) {
 	printf("Attached: %s\n", libevdev_get_name(evdev));
 	for (unsigned int i = 0; i <= EV_MAX; i++) {
 		if (libevdev_has_event_type(evdev, i)) {
@@ -35,16 +35,16 @@ void DebugPrintDevice(struct libevdev* evdev) {
     }
 		switch(i) {
 			case EV_KEY:
-				PrintEventBits(evdev, EV_KEY, KEY_MAX);
+				EvdevPrintEventBits(evdev, EV_KEY, KEY_MAX);
 				break;
 			case EV_REL:
-				PrintEventBits(evdev, EV_REL, REL_MAX);
+				EvdevPrintEventBits(evdev, EV_REL, REL_MAX);
 				break;
 			case EV_ABS:
-				PrintEventBits(evdev, EV_ABS, ABS_MAX);
+				EvdevPrintEventBits(evdev, EV_ABS, ABS_MAX);
 				break;
 			case EV_LED:
-				PrintEventBits(evdev, EV_LED, LED_MAX);
+				EvdevPrintEventBits(evdev, EV_LED, LED_MAX);
 				break;
 		}
   }
@@ -53,9 +53,8 @@ void DebugPrintDevice(struct libevdev* evdev) {
 
 
 SystemImpl::~SystemImpl() {
-  for (const EvdevDevice& device : devices_) {
-    if (device.evdev == nullptr) continue;
-    libevdev_free(device.evdev);
+  for (EvdevDevice& device : devices_) {
+    EvdevCleanup(&device);
   }
 }
 
@@ -65,36 +64,49 @@ SystemImpl::ProcessEvents() {
     Initialize();
     initialized_ = true;
   }
-  ReadEvdevInputs();
+  EvdevReadInputs();
 }
 
 void
 SystemImpl::Initialize() {
   // TODO: Search in filesystem.
-  InitializeEvdev("/dev/input/event5");
+  EvdevInitialize("/dev/input/event5");
 }
 
 void
-SystemImpl::InitializeEvdev(const std::string& filename) {
+SystemImpl::EvdevCleanup(EvdevDevice* device) {
+  if (device->evdev != nullptr) {
+    libevdev_free(device->evdev);
+    device->evdev = nullptr;
+  }
+  if (device->file_descriptor >= 0) {
+    ::close(device->file_descriptor);
+    device->file_descriptor = -1;
+  }
+}
+
+void
+SystemImpl::EvdevInitialize(const std::string& filename) {
   EvdevDevice device;
   device.filename = filename;
 
-  int fd = ::open(filename.c_str(), O_RDONLY|O_NONBLOCK);
-  if (fd < 0) {
+  device.file_descriptor = ::open(filename.c_str(), O_RDONLY|O_NONBLOCK);
+  if (device.file_descriptor < 0) {
     fprintf(stderr, "Failed to open event file\n");
     return;
   }
 
-  int rc = libevdev_new_from_fd(fd, &device.evdev);
+  int rc = libevdev_new_from_fd(device.file_descriptor, &device.evdev);
   if (rc < 0 || device.evdev == nullptr) {
     fprintf(stderr, "Failed to init libevdev: %s\n", ::strerror(-rc));
+    EvdevCleanup(&device);
     return;
   }
 
   device.device.vendor_id = libevdev_get_id_vendor(device.evdev);
   device.device.product_id = libevdev_get_id_product(device.evdev);
   device.device.description = libevdev_get_name(device.evdev);
-  DebugPrintDevice(device.evdev);
+  EvdevPrintEvents(device.evdev);
 
   // Scan gamepad buttons.
   device.key_map.resize(KEY_MAX);
@@ -130,7 +142,7 @@ SystemImpl::InitializeEvdev(const std::string& filename) {
 }
 
 void
-SystemImpl::ReadEvdevInputs() {
+SystemImpl::EvdevReadInputs() {
   bool clean_up_devices = false;
   for (EvdevDevice& device : devices_) {
     struct input_event event;
@@ -140,14 +152,14 @@ SystemImpl::ReadEvdevInputs() {
       // If events have been dropped, sync up.
       if (rc == LIBEVDEV_READ_STATUS_SYNC) {
         while (rc == LIBEVDEV_READ_STATUS_SYNC) {
-          ProcessEvdevEvent(&device, event);
+          EvdevProcessEvent(&device, event);
           rc = libevdev_next_event(device.evdev, LIBEVDEV_READ_FLAG_SYNC, &event);
         }
       }
 
       // Process successfully read events.
       if (rc == LIBEVDEV_READ_STATUS_SUCCESS) {
-        ProcessEvdevEvent(&device, event);
+        EvdevProcessEvent(&device, event);
         continue;
       }
 
@@ -155,8 +167,7 @@ SystemImpl::ReadEvdevInputs() {
       if (rc == -EAGAIN) break;
 
       // Other cases are errors. Remove device.
-      libevdev_free(device.evdev);
-      device.evdev = nullptr;
+      EvdevCleanup(&device);
       clean_up_devices = true;
       break;
     }
@@ -178,7 +189,7 @@ SystemImpl::ReadEvdevInputs() {
 }
 
 void
-SystemImpl::ProcessEvdevEvent(EvdevDevice* device, const struct input_event& event) {
+SystemImpl::EvdevProcessEvent(EvdevDevice* device, const struct input_event& event) {
   // Not sure why this is necessary. Ignore.
   if (event.type == EV_SYN) {
     return;
