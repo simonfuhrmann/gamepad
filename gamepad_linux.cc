@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <cstring>
+#include <unistd.h>
 
 #include <string>
 
