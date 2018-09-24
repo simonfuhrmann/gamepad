@@ -1,4 +1,4 @@
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 
 #include "gamepad_libstem.h"
 
@@ -80,4 +80,4 @@ SystemImpl::OnAxisMove(Gamepad_device* device, unsigned int axisId, float value,
 
 }  // namespace gamepad
 
-#endif  // _WIN32
+#endif  // _WIN32 or __APPLE__

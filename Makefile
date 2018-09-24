@@ -11,12 +11,11 @@ ifeq (${UNAME},Darwin)
   LD_FLAGS_LIBSTEM = libstem_gamepad/build/library/release-macosx/libstem_gamepad.a
 
   C_FLAGS =
-  LD_FLAGS = -framework IOKit -framework CoreFoundation
+  LD_FLAGS = -framework IOKit -framework CoreFoundation ${LD_FLAGS_LIBSTEM}
 endif
 ifeq (${UNAME},Linux)
   CFLAGS_EVDEV = $(shell pkg-config --cflags libevdev)
   LD_FLAGS_EVDEV = $(shell pkg-config --libs libevdev)
-	LD_FLAGS_LIBSTEM = libstem_gamepad/build/library/release-linux64/libstem_gamepad.a
 
   C_FLAGS = ${CFLAGS_EVDEV}
   LD_FLAGS = -lpthread ${LD_FLAGS_EVDEV}

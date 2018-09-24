@@ -1,6 +1,6 @@
 #ifndef GAMEPAD_LIBSTEM_HEADER
 #define GAMEPAD_LIBSTEM_HEADER
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 
 #include <map>
 
@@ -31,5 +31,5 @@ class SystemImpl : public System {
 
 }  // namespace gamepad
 
-#endif  // _WIN32
+#endif  // _WIN32 or __APPLE__
 #endif  // GAMEPAD_LIBSTEM_HEADER
