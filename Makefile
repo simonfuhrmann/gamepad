@@ -6,26 +6,29 @@ TARGET = main
 SOURCES = $(filter-out main_libstem.cc,$(wildcard [^_]*.cc))
 OBJECTS = ${SOURCES:.cc=.o}
 
-LD_LIBS_MACOS = libstem_gamepad/build/library/release-macosx/libstem_gamepad.a
-LD_LIBS_LINUX = libstem_gamepad/build/library/release-linux64/libstem_gamepad.a
-LD_FLAGS_MACOS = -framework IOKit -framework CoreFoundation
-LD_FLAGS_LINUX = -lpthread
-
 UNAME = $(shell uname)
 ifeq (${UNAME},Darwin)
-  LD_FLAGS = ${LD_LIBS_MACOS} ${LD_FLAGS_MACOS}
+  LD_FLAGS_LIBSTEM = libstem_gamepad/build/library/release-macosx/libstem_gamepad.a
+
+  C_FLAGS =
+  LD_FLAGS = -framework IOKit -framework CoreFoundation
 endif
 ifeq (${UNAME},Linux)
-  LD_FLAGS = ${LD_LIBS_LINUX} ${LD_FLAGS_LINUX}
+  CFLAGS_EVDEV = $(shell pkg-config --cflags libevdev)
+  LD_FLAGS_EVDEV = $(shell pkg-config --libs libevdev)
+	LD_FLAGS_LIBSTEM = libstem_gamepad/build/library/release-linux64/libstem_gamepad.a
+
+  C_FLAGS = ${CFLAGS_EVDEV}
+  LD_FLAGS = -lpthread ${LD_FLAGS_EVDEV}
 endif
 
 %.o: %.cc
-	${COMPILE.cc} -o $@ $<
+	${COMPILE.cc} -o $@ ${C_FLAGS} $<
 
 all: ${OBJECTS}
 	g++ -o ${TARGET} ${OBJECTS} ${LD_FLAGS}
 
-# Debug target that only uses the original library.
+# Debug target that only uses libstem_gamepad
 libstem: main_libstem.o
 	g++ -o main_libstem main_libstem.o ${LD_FLAGS}
 

@@ -9,9 +9,9 @@
 namespace gamepad {
 
 struct Device {
-  unsigned int device_id;
-  int vendor_id;
-  int product_id;
+  unsigned int device_id = 0;
+  int vendor_id = 0;
+  int product_id = 0;
   std::string description;
   std::vector<float> axes;
   std::vector<bool> buttons;
@@ -19,9 +19,13 @@ struct Device {
 
 class System {
  public:
+  // The attached handler signature.
   typedef std::function<void(Device*)> AttachedHandler;
+  // The detached handler signature.
   typedef std::function<void(Device*)> DetachedHandler;
+  // The button handler signature (device, button ID, timestamp).
   typedef std::function<void(Device*, unsigned int, double)> ButtonHandler;
+  // The axis handler signature (device, axis ID, value, old value, timestamp).
   typedef std::function<void(Device*, unsigned int, float, float, double)> AxisHandler;
 
  public:
@@ -39,6 +43,8 @@ class System {
   // Registers a handler for axis move events.
   void RegisterAxisMoveHandler(AxisHandler handler);
 
+  // Processes all gamepad events and invokes the corresponding handler
+  // functions.
   virtual void ProcessEvents() = 0;
 
  protected:

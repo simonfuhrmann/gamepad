@@ -24,7 +24,7 @@ void print_device_state(gamepad::Device* device) {
   }
   std::cout << "Axes: ";
   for (unsigned int i = 0; i < device->axes.size(); ++i) {
-    const double value = device->axes[i];
+    const float value = device->axes[i];
     const int print = static_cast<int>(value * 100.0);
     std::cout << std::setw(4) << print << " ";
   }
