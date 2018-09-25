@@ -15,21 +15,23 @@ device.
 
 Example code (see `main.cc` for details):
 
-    int main() {
-      std::unique_ptr<gamepad::System> gamepad = gamepad::System::Create();
-      gamepad->RegisterAttachHandler(device_attached);
-      gamepad->RegisterDetachHandler(device_detached);
-      gamepad->RegisterButtonUpHandler(button_event);
-      gamepad->RegisterButtonDownHandler(button_event);
-      gamepad->RegisterAxisMoveHandler(axis_event);
+````c++
+int main() {
+  std::unique_ptr<gamepad::System> gamepad = gamepad::System::Create();
+  gamepad->RegisterAttachHandler(device_attached);
+  gamepad->RegisterDetachHandler(device_detached);
+  gamepad->RegisterButtonUpHandler(button_event);
+  gamepad->RegisterButtonDownHandler(button_event);
+  gamepad->RegisterAxisMoveHandler(axis_event);
 
-      while (true) {
-        gamepad->ProcessEvents();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      }
+  while (true) {
+    gamepad->ProcessEvents();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
 
-      return 0;
-    }
+  return 0;
+}
+````
 
 The library only supports joystick-like devices. Mouse and keyboard are not
 supported.
