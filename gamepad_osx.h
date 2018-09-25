@@ -36,6 +36,7 @@ class SystemImpl : public System {
   SystemImpl() = default;
   ~SystemImpl() override;
   void ProcessEvents() override;
+  void ScanForDevices() override;
 
  private:
   void HidInitialize();
@@ -51,6 +52,7 @@ class SystemImpl : public System {
 
  private:
   bool initialized_ = false;
+  int next_device_id_ = 0;
   IOHIDManagerRef hid_manager_ = nullptr;
   std::vector<HidDevice> devices_;
 };

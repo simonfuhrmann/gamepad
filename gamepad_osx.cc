@@ -30,9 +30,16 @@ void
 SystemImpl::ProcessEvents() {
   if (!initialized_) {
     HidInitialize();
-    initialized_ = true;
   }
   HidReadInputs();
+}
+
+void
+SystemImpl::ScanForDevices() {
+  if (!initialized_) {
+    HidInitialize();
+  }
+  // TODO
 }
 
 void
@@ -94,6 +101,8 @@ SystemImpl::HidInitialize() {
     int ret = CFRunLoopRunInMode(CUSTOM_RUN_LOOP_MODE, /*seconds=*/0, true);
     if (ret != kCFRunLoopRunHandledSource) break;
   }
+
+  initialized_ = true;
 }
 
 void
@@ -173,7 +182,6 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   // Create the device record.
   HidDevice hid_device;
   hid_device.device_ref = device;
-  hid_device.device.device_id = 0;  // TODO: Incrementing device numbers.
   hid_device.device.vendor_id = vendor_id;
   hid_device.device.product_id = product_id;
   hid_device.device.description = device_name;
@@ -206,7 +214,8 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   hid_device.device.buttons.resize(hid_device.button_map.size(), false);
   hid_device.device.axes.resize(hid_device.axis_map.size(), 0.0f);
 
-  // Register device and notify client.
+  // Assign device ID and notify client.
+  hid_device.device.device_id = next_device_id_++;
   devices_.push_back(hid_device);
   if (attached_handler_) {
     attached_handler_(&devices_.back().device);

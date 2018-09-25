@@ -43,9 +43,14 @@ class System {
   // Registers a handler for axis move events.
   void RegisterAxisMoveHandler(AxisHandler handler);
 
-  // Processes all gamepad events and invokes the corresponding handler
-  // functions.
+  // Processes all events and invokes the corresponding handler functions.
   virtual void ProcessEvents() = 0;
+
+  // Scans for new devices and invokes the attach handler for each new device.
+  // The cost of this call depends on the implementation.
+  // MacOS: Essentially free, devices are attached using IOKit callbacks.
+  // Linux: Needs to scan /dev/input for devices not already attached.
+  virtual void ScanForDevices() = 0;
 
  protected:
   System() = default;

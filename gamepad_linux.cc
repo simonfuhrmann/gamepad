@@ -2,12 +2,16 @@
 
 #include "gamepad_linux.h"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <cstring>
+#include <dirent.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <iostream>
 #include <string>
 
 namespace gamepad {
@@ -59,18 +63,59 @@ SystemImpl::~SystemImpl() {
 }
 
 void
+SystemImpl::Initialize() {
+  initialized_ = true;
+}
+
+void
 SystemImpl::ProcessEvents() {
   if (!initialized_) {
     Initialize();
-    initialized_ = true;
   }
   EvdevReadInputs();
 }
 
 void
-SystemImpl::Initialize() {
-  // TODO: Search in filesystem.
-  EvdevInitialize("/dev/input/event5");
+SystemImpl::ScanForDevices() {
+  if (!initialized_) {
+    Initialize();
+  }
+
+  // Search for device files with "-event-joystick" suffix.
+  const std::string dirname = "/dev/input/by-id/";
+  const std::string suffix = "-event-joystick";
+
+  // Open the search directory.
+  DIR* dir = ::opendir(dirname.c_str());
+  if (dir == nullptr) {
+    std::cerr << "Error opening " << dirname << ": "
+        << ::strerror(errno) << std::endl;
+    return;
+  }
+
+  // Scan every file.
+  struct dirent* entry = nullptr;
+  while ((entry = ::readdir(dir)) != nullptr) {
+    const std::string filename = dirname + entry->d_name;
+
+    // Skip files without the joystick suffix.
+    if (suffix.size() > filename.size() ||
+        !std::equal(suffix.rbegin(), suffix.rend(), filename.rbegin())) {
+      continue;
+    }
+
+    // Skip devices that are already attached.
+    if (std::any_of(devices_.begin(), devices_.end(),
+        [filename](const EvdevDevice& device) {
+          return device.filename == filename;
+        })) {
+      continue;
+    }
+
+    // Initialize the new device.
+    EvdevInitialize(filename);
+  }
+  ::closedir(dir);
 }
 
 void
@@ -135,7 +180,8 @@ SystemImpl::EvdevInitialize(const std::string& filename) {
   }
   device.device.axes.resize(num_axes, 0.0f);
 
-  // Register device and notify client.
+  // Assign device ID and notify client.
+  device.device.device_id = next_device_id_++;
   devices_.push_back(device);
   if (attached_handler_) {
     attached_handler_(&devices_.back().device);
