@@ -25,6 +25,7 @@ int main() {
   gamepad->RegisterAxisMoveHandler(axis_event);
 
   while (true) {
+    gamepad->ScanForDevices();
     gamepad->ProcessEvents();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
