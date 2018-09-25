@@ -33,11 +33,11 @@ void print_device_state(gamepad::Device* device) {
   std::cout << std::endl;
 }
 
-void button_event(gamepad::Device* device, unsigned int, double) {
+void button_event(gamepad::Device* device, int, double) {
   print_device_state(device);
 }
 
-void axis_event(gamepad::Device* device, unsigned int, float, float, double) {
+void axis_event(gamepad::Device* device, int, float, float, double) {
   print_device_state(device);
 }
 

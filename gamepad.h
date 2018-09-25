@@ -24,9 +24,9 @@ class System {
   // The detached handler signature.
   typedef std::function<void(Device*)> DetachedHandler;
   // The button handler signature (device, button ID, timestamp).
-  typedef std::function<void(Device*, unsigned int, double)> ButtonHandler;
+  typedef std::function<void(Device*, int, double)> ButtonHandler;
   // The axis handler signature (device, axis ID, value, old value, timestamp).
-  typedef std::function<void(Device*, unsigned int, float, float, double)> AxisHandler;
+  typedef std::function<void(Device*, int, float, float, double)> AxisHandler;
 
  public:
   static std::unique_ptr<System> Create();
