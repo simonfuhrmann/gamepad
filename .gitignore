@@ -1,0 +1,8 @@
+# compiled objects
+*.o
+
+# compiled archives
+*.a
+
+# generated makefiles
+*.dep
