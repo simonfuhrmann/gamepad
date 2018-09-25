@@ -23,7 +23,7 @@ endif
 	${COMPILE.cc} -o $@ ${C_FLAGS} $<
 
 all: ${OBJECTS}
-	g++ -o ${TARGET} ${OBJECTS} ${LD_FLAGS}
+	${CXX} -o ${TARGET} ${OBJECTS} ${LD_FLAGS}
 
 clean:
 	${RM} ${OBJECTS} ${TARGET}
