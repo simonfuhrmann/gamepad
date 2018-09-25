@@ -15,10 +15,10 @@ struct EvdevKeyInfo {
 
 struct EvdevAxisInfo {
   int axis_id = -1;
-  float minimum = 0.0f;
-  float maximum = 0.0f;
-  float last_value = 0.0f;
+  int minimum = 0;
+  int maximum = 0;
   int flat = 0;
+  int fuzz = 0;
 };
 
 struct EvdevDevice {

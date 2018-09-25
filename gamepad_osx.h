@@ -19,9 +19,8 @@ struct HidButtonInfo {
 struct HidAxisInfo {
   int axis_id = -1;
   int cookie = -1;
-  float minimum = 0.0f;
-  float maximum = 0.0f;
-  float last_value = 0.0f;
+  int minimum = 0;
+  int maximum = 0;
 };
 
 struct HidDevice {
@@ -45,7 +44,6 @@ class SystemImpl : public System {
   void HidDeviceAttached(IOHIDDeviceRef device);
   void HidDeviceDetached(IOHIDDeviceRef device);
   void HidDeviceInput(IOHIDValueRef value);
-  void HandleAxisEvent(HidDevice* device, int axis_id, int int_value);
 
   static void HidAttached(void* context, IOReturn result, void* sender, IOHIDDeviceRef device);
   static void HidDetached(void* context, IOReturn result, void* sender, IOHIDDeviceRef device);

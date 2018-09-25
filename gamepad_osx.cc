@@ -12,7 +12,7 @@ constexpr int kHidPageDesktop = kHIDPage_GenericDesktop;
 constexpr int kHidUsageGamepad = kHIDUsage_GD_GamePad;
 constexpr int kHidUsageJoystick = kHIDUsage_GD_Joystick;
 constexpr int kHidUsageController = kHIDUsage_GD_MultiAxisController;
-}  // namespace 
+}  // namespace
 
 SystemImpl::~SystemImpl() {
   for (HidDevice& device : devices_) {
@@ -46,7 +46,7 @@ SystemImpl::HidInitialize() {
   // Create device matching dictionary.
   CFStringRef keys[2];
   keys[0] = CFSTR(kIOHIDDeviceUsagePageKey);
-  keys[1] = CFSTR(kIOHIDDeviceUsageKey);  
+  keys[1] = CFSTR(kIOHIDDeviceUsageKey);
 
   CFDictionaryRef dictionaries[3];
   CFNumberRef values[2];
@@ -126,7 +126,7 @@ SystemImpl::HidReadInputs() {
   }
 }
 
-void 
+void
 SystemImpl::HidAttached(void* context, IOReturn result, void* sender, IOHIDDeviceRef device) {
   SystemImpl* system = static_cast<SystemImpl*>(context);
   system->HidDeviceAttached(device);
@@ -144,7 +144,7 @@ SystemImpl::HidInput(void* context, IOReturn result, void* sender, IOHIDValueRef
   system->HidDeviceInput(value);
 }
 
-void 
+void
 SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   // Get vendor and product ID.
   CFTypeRef vendorRef = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDVendorIDKey));
@@ -183,13 +183,13 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
 	for (int i = 0; i < CFArrayGetCount(elements); i++) {
 		IOHIDElementRef element = (IOHIDElementRef)CFArrayGetValueAtIndex(elements, i);
 		IOHIDElementType type = IOHIDElementGetType(element);
-		
+
     if (type == kIOHIDElementTypeInput_Button) {
       HidButtonInfo button_info;
       button_info.button_id = hid_device.button_map.size();
       button_info.cookie = IOHIDElementGetCookie(element);
       hid_device.button_map.push_back(button_info);
-		} else if (type == kIOHIDElementTypeInput_Misc || 
+		} else if (type == kIOHIDElementTypeInput_Misc ||
         type == kIOHIDElementTypeInput_Axis) {
       if (hid_device.axis_map.size() > 8) continue;  // TODO: Fix for PS4
       HidAxisInfo axis_info;
@@ -217,7 +217,7 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   IOHIDDeviceRegisterInputValueCallback(device, SystemImpl::HidInput, this);
 }
 
-void 
+void
 SystemImpl::HidDeviceDetached(IOHIDDeviceRef device) {
   for (HidDevice& hid_device : devices_) {
     if (hid_device.device_ref == device) {
@@ -246,40 +246,25 @@ SystemImpl::HidDeviceInput(IOHIDValueRef value) {
     return;
   }
 
-  int int_value = IOHIDValueGetIntegerValue(value);
+  const int int_value = IOHIDValueGetIntegerValue(value);
 
   // Find cookie for buttons. TODO: Provide better map to avoid lookup.
   for (std::size_t i = 0; i < hid_device->button_map.size(); ++i) {
-    if (hid_device->button_map[i].cookie == cookie) {
-      HandleButtonEvent(&hid_device->device, i, int_value);
+    HidButtonInfo& button_info = hid_device->button_map[i];
+    if (button_info.cookie == cookie) {
+      HandleButtonEvent(&hid_device->device, button_info.button_id, int_value);
       return;
     }
   }
 
   // Find cookie for axes. TODO: Provide better map to avoid lookup.
-  for (std::size_t i = 0; i < hid_device->button_map.size(); ++i) {
-    if (hid_device->axis_map[i].cookie == cookie) {
-      HandleAxisEvent(hid_device, i, int_value);
+  for (std::size_t i = 0; i < hid_device->axis_map.size(); ++i) {
+    HidAxisInfo& axis_info = hid_device->axis_map[i];
+    if (axis_info.cookie == cookie) {
+      HandleAxisEvent(&hid_device->device, axis_info.axis_id, int_value,
+          axis_info.minimum, axis_info.maximum, 0, 0);
       return;
     }
-  }
-}
-
-// TODO: Move this to base class.
-void
-SystemImpl::HandleAxisEvent(HidDevice* device, int axis_id, int int_value) {
-  HidAxisInfo& axis_info = device->axis_map[axis_id];
-  const float float_value = static_cast<float>(int_value);
-  const float range = axis_info.maximum - axis_info.minimum;
-  const float norm = (float_value - axis_info.minimum) / range;
-  const float value = std::max(-1.0f, std::min(1.0f, 2.0f * norm - 1.0f));
-
-  if (axis_info.last_value != value) {
-    device->device.axes[axis_id] = value;
-    if (axis_move_handler_) {
-      axis_move_handler_(&device->device, axis_id, value, axis_info.last_value, 0.0);
-    }
-    axis_info.last_value = value;
   }
 }
 

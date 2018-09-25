@@ -126,9 +126,10 @@ SystemImpl::EvdevInitialize(const std::string& filename) {
     if (libevdev_has_event_code(device.evdev, EV_ABS, i)) {
       const struct input_absinfo* abs = libevdev_get_abs_info(device.evdev, i);
       device.axis_map[i].axis_id = num_axes;
-      device.axis_map[i].minimum = static_cast<float>(abs->minimum);
-      device.axis_map[i].maximum = static_cast<float>(abs->maximum);
+      device.axis_map[i].minimum = abs->minimum;
+      device.axis_map[i].maximum = abs->maximum;
       device.axis_map[i].flat = abs->flat;
+      device.axis_map[i].fuzz = abs->fuzz;
       num_axes += 1;
     }
   }
@@ -195,36 +196,16 @@ SystemImpl::EvdevProcessEvent(EvdevDevice* device, const struct input_event& eve
     return;
   }
 
-  // Handle button event.
   if (event.type == EV_KEY) {
-    const int button_id = device->key_map[event.code].button_id;
-    HandleButtonEvent(&device->device, button_id, event.value);
-  }
-
-  // Handle axis event.
-  if (event.type == EV_ABS) {
+    // Handle button event.
+    EvdevKeyInfo& key_info = device->key_map[event.code];
+    HandleButtonEvent(&device->device, key_info.button_id, event.value);
+  } else if (event.type == EV_ABS) {
+    // Handle axis event.
     EvdevAxisInfo& axis_info = device->axis_map[event.code];
-    const int flat_value =
-        event.value > -axis_info.flat && event.value < axis_info.flat
-            ? 0
-            : event.value;
-    const float float_value = static_cast<float>(flat_value);
-    const float range = axis_info.maximum - axis_info.minimum;
-    const float norm = (float_value - axis_info.minimum) / range;
-    const float value = std::max(-1.0f, std::min(1.0f, 2.0f * norm - 1.0f));
-
-    if (axis_info.last_value != value) {
-      const int axis_id = axis_info.axis_id;
-      device->device.axes[axis_id] = value;
-      if (axis_move_handler_) {
-        axis_move_handler_(&device->device, axis_id, value, axis_info.last_value, 0.0);
-      }
-      axis_info.last_value = value;
-    }
+    HandleAxisEvent(&device->device, axis_info.axis_id, event.value,
+        axis_info.minimum, axis_info.maximum, axis_info.fuzz, axis_info.flat);
   }
-
-
-  // printf("Event type=%d code=%d value=%d\n", event.type, event.code, event.value);
 }
 
 }  // namespace gamepad

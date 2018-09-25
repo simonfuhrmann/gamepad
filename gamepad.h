@@ -50,6 +50,8 @@ class System {
  protected:
   System() = default;
   void HandleButtonEvent(Device* device, int button_id, int value);
+  void HandleAxisEvent(Device* device, int axis_id, int value,
+      int min, int max, int fuzz, int flat);
 
   AttachedHandler attached_handler_;
   DetachedHandler detached_handler_;
