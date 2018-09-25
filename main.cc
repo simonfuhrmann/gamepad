@@ -6,15 +6,17 @@
 #include "gamepad.h"
 
 void device_attached(gamepad::Device* device) {
-  std::cout << "Attached: " << device->description << std::endl;
-  std::cout << "  id=" << device->device_id << " vendor=" << device->vendor_id
+  std::cout << "Attached ID " << device->device_id
+      << " (" << device->description << ")" << std::endl;
+  std::cout << "  vendor=" << device->vendor_id
       << " product=" << device->product_id << std::endl;
   std::cout << "  buttons=" << device->buttons.size()
       << " axis=" << device->axes.size() << std::endl;
 }
 
 void device_detached(gamepad::Device* device) {
-  std::cout << "Detached ID " << device->device_id << std::endl;
+  std::cout << "Detached ID " << device->device_id 
+      << " (" << device->description << ")" << std::endl;
 }
 
 void print_device_state(gamepad::Device* device) {

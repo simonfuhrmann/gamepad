@@ -33,9 +33,8 @@ struct EvdevDevice {
 class SystemImpl : public System {
  public:
   SystemImpl() = default;
-  virtual ~SystemImpl();
-
-  void ProcessEvents();
+  ~SystemImpl() override;
+  void ProcessEvents() override;
 
  private:
   void Initialize();

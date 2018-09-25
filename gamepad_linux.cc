@@ -52,7 +52,6 @@ void EvdevPrintEvents(struct libevdev* evdev) {
 }
 }  // namespace
 
-
 SystemImpl::~SystemImpl() {
   for (EvdevDevice& device : devices_) {
     EvdevCleanup(&device);
@@ -199,13 +198,7 @@ SystemImpl::EvdevProcessEvent(EvdevDevice* device, const struct input_event& eve
   // Handle button event.
   if (event.type == EV_KEY) {
     const int button_id = device->key_map[event.code].button_id;
-    const bool is_down = event.value > 0;
-    device->device.buttons[button_id] = is_down;
-    if (is_down && button_down_handler_) {
-      button_down_handler_(&device->device, button_id, 0.0);
-    } else if (!is_down && button_up_handler_) {
-      button_up_handler_(&device->device, button_id, 0.0);
-    }
+    HandleButtonEvent(&device->device, button_id, event.value);
   }
 
   // Handle axis event.

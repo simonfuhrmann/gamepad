@@ -49,6 +49,7 @@ class System {
 
  protected:
   System() = default;
+  void HandleButtonEvent(Device* device, int button_id, int value);
 
   AttachedHandler attached_handler_;
   DetachedHandler detached_handler_;
