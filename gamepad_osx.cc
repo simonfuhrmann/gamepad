@@ -4,7 +4,8 @@
 
 #include <iostream>
 
-#define CUSTOM_RUN_LOOP_MODE CFSTR("CustomRunLoopMode")
+#define RUN_LOOP_MODE_DISCOVERY CFSTR("RunLoopModeDiscovery")
+#define RUN_LOOP_MODE_INPUT CFSTR("RunLoopModeInput")
 
 namespace gamepad {
 namespace {
@@ -31,7 +32,24 @@ SystemImpl::ProcessEvents() {
   if (!initialized_) {
     HidInitialize();
   }
-  HidReadInputs();
+
+  // Run RunLoop for event handling.
+  while (true) {
+    int ret = CFRunLoopRunInMode(RUN_LOOP_MODE_INPUT, /*seconds=*/0, true);
+    if (ret != kCFRunLoopRunHandledSource) break;
+  }
+
+  // Detach devices that have been removed.
+  for (auto iter = devices_.begin(); iter != devices_.end();) {
+    if (iter->disconnected) {
+      if (detached_handler_) {
+        detached_handler_(&iter->device);
+      }
+      iter = devices_.erase(iter);
+    } else {
+      iter++;
+    }
+  }
 }
 
 void
@@ -39,7 +57,12 @@ SystemImpl::ScanForDevices() {
   if (!initialized_) {
     HidInitialize();
   }
-  // TODO
+
+  // Run RunLoop for device discovery.
+  while (true) {
+    int ret = CFRunLoopRunInMode(RUN_LOOP_MODE_DISCOVERY, /*seconds=*/0, true);
+    if (ret != kCFRunLoopRunHandledSource) break;
+  }
 }
 
 void
@@ -96,12 +119,7 @@ SystemImpl::HidInitialize() {
   }
 
   // Process initial events.
-  IOHIDManagerScheduleWithRunLoop(hid_manager_, CFRunLoopGetCurrent(), CUSTOM_RUN_LOOP_MODE);
-  while (true) {
-    int ret = CFRunLoopRunInMode(CUSTOM_RUN_LOOP_MODE, /*seconds=*/0, true);
-    if (ret != kCFRunLoopRunHandledSource) break;
-  }
-
+  IOHIDManagerScheduleWithRunLoop(hid_manager_, CFRunLoopGetCurrent(), RUN_LOOP_MODE_DISCOVERY);
   initialized_ = true;
 }
 
@@ -111,27 +129,6 @@ SystemImpl::HidCleanup(HidDevice* device) {
   if (device->device_ref != nullptr) {
     IOHIDDeviceClose(device->device_ref, kIOHIDOptionsTypeNone);
     device->device_ref = nullptr;
-  }
-}
-
-void
-SystemImpl::HidReadInputs() {
-  // Run event loop. This triggers attach/detach and input callbacks.
-  while (true) {
-    int ret = CFRunLoopRunInMode(CUSTOM_RUN_LOOP_MODE, /*seconds=*/0, true);
-    if (ret != kCFRunLoopRunHandledSource) break;
-  }
-
-  // Detach devices that have been removed.
-  for (auto iter = devices_.begin(); iter != devices_.end();) {
-    if (iter->disconnected) {
-      if (detached_handler_) {
-        detached_handler_(&iter->device);
-      }
-      iter = devices_.erase(iter);
-    } else {
-      iter++;
-    }
   }
 }
 
@@ -223,11 +220,13 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
 
   // Open HID device and attach input callback.
   IOHIDDeviceOpen(device, kIOHIDOptionsTypeNone);
+  IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), RUN_LOOP_MODE_INPUT);
   IOHIDDeviceRegisterInputValueCallback(device, SystemImpl::HidInput, this);
 }
 
 void
 SystemImpl::HidDeviceDetached(IOHIDDeviceRef device) {
+  // De-allocate existing devices, fire callback later on ProcessEvents().
   for (HidDevice& hid_device : devices_) {
     if (hid_device.device_ref == device) {
       HidCleanup(&hid_device);

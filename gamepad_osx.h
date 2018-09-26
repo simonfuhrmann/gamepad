@@ -41,14 +41,16 @@ class SystemImpl : public System {
  private:
   void HidInitialize();
   void HidCleanup(HidDevice* device);
-  void HidReadInputs();
   void HidDeviceAttached(IOHIDDeviceRef device);
   void HidDeviceDetached(IOHIDDeviceRef device);
   void HidDeviceInput(IOHIDValueRef value);
 
-  static void HidAttached(void* context, IOReturn result, void* sender, IOHIDDeviceRef device);
-  static void HidDetached(void* context, IOReturn result, void* sender, IOHIDDeviceRef device);
-  static void HidInput(void* context, IOReturn result, void* sender, IOHIDValueRef value);
+  static void HidAttached(
+      void* context, IOReturn result, void* sender, IOHIDDeviceRef device);
+  static void HidDetached(
+      void* context, IOReturn result, void* sender, IOHIDDeviceRef device);
+  static void HidInput(
+      void* context, IOReturn result, void* sender, IOHIDValueRef value);
 
  private:
   bool initialized_ = false;
