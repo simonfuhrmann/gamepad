@@ -33,11 +33,11 @@ SystemImpl::ProcessEvents() {
     HidInitialize();
   }
 
-  // Run RunLoop for event handling.
-  while (true) {
-    int ret = CFRunLoopRunInMode(RUN_LOOP_MODE_INPUT, /*seconds=*/0, true);
-    if (ret != kCFRunLoopRunHandledSource) break;
-  }
+  // RunLoop for event handling. This processes more than one event, and
+  // calling this in a loop does not seem to make a difference. Events can get
+  // swallowed either way if the device issues lots of input events and the
+  // polling interval is too long.
+  CFRunLoopRunInMode(RUN_LOOP_MODE_INPUT, /*seconds=*/0, true);
 
   // Detach devices that have been removed.
   for (auto iter = devices_.begin(); iter != devices_.end();) {
@@ -58,11 +58,8 @@ SystemImpl::ScanForDevices() {
     HidInitialize();
   }
 
-  // Run RunLoop for device discovery.
-  while (true) {
-    int ret = CFRunLoopRunInMode(RUN_LOOP_MODE_DISCOVERY, /*seconds=*/0, true);
-    if (ret != kCFRunLoopRunHandledSource) break;
-  }
+  // RunLoop for device discovery.
+  CFRunLoopRunInMode(RUN_LOOP_MODE_DISCOVERY, /*seconds=*/0, true);
 }
 
 void
