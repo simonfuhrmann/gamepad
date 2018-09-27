@@ -16,9 +16,13 @@ constexpr int kHidUsageController = kHIDUsage_GD_MultiAxisController;
 }  // namespace
 
 SystemImpl::~SystemImpl() {
-  for (HidDevice& device : devices_) {
-    HidCleanup(&device);
+  // Clean up devices.
+  for (HidDevice* device : devices_) {
+    HidCleanup(device);
+    delete device;
   }
+  devices_.clear();
+  // Close event manager.
   if (hid_manager_ != nullptr) {
     IOHIDManagerUnscheduleFromRunLoop(hid_manager_, CFRunLoopGetCurrent(), kCFRunLoopCommonModes);
     IOHIDManagerClose(hid_manager_, kIOHIDOptionsTypeNone);
@@ -41,10 +45,12 @@ SystemImpl::ProcessEvents() {
 
   // Detach devices that have been removed.
   for (auto iter = devices_.begin(); iter != devices_.end();) {
-    if (iter->disconnected) {
+    HidDevice* device = *iter;
+    if (device->disconnected) {
       if (detached_handler_) {
-        detached_handler_(&iter->device);
+        detached_handler_(&device->device);
       }
+      delete device;
       iter = devices_.erase(iter);
     } else {
       iter++;
@@ -64,6 +70,7 @@ SystemImpl::ScanForDevices() {
 
 void
 SystemImpl::HidInitialize() {
+  // Create he HID manager.
   hid_manager_ = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
   if (hid_manager_ == nullptr) {
     std::cout << "Error creating HID manager." << std::endl;
@@ -143,8 +150,8 @@ SystemImpl::HidDetached(void* context, IOReturn result, void* sender, IOHIDDevic
 
 void
 SystemImpl::HidInput(void* context, IOReturn result, void* sender, IOHIDValueRef value) {
-  SystemImpl* system = static_cast<SystemImpl*>(context);
-  system->HidDeviceInput(value);
+  HidDevice* device = static_cast<HidDevice*>(context);
+  device->parent->HidDeviceInput(device, value);
 }
 
 void
@@ -174,11 +181,12 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   }
 
   // Create the device record.
-  HidDevice hid_device;
-  hid_device.device_ref = device;
-  hid_device.device.vendor_id = vendor_id;
-  hid_device.device.product_id = product_id;
-  hid_device.device.description = device_name;
+  HidDevice* hid_device = new HidDevice();
+  hid_device->device_ref = device;
+  hid_device->parent = this;
+  hid_device->device.vendor_id = vendor_id;
+  hid_device->device.product_id = product_id;
+  hid_device->device.description = device_name;
 
   // Scan buttons and axes.
   CFArrayRef elements = IOHIDDeviceCopyMatchingElements(device, nullptr, kIOHIDOptionsTypeNone);
@@ -188,69 +196,56 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
 
     if (type == kIOHIDElementTypeInput_Button) {
       HidButtonInfo button_info;
-      button_info.button_id = hid_device.button_map.size();
+      button_info.button_id = hid_device->button_map.size();
       button_info.cookie = IOHIDElementGetCookie(element);
-      hid_device.button_map.push_back(button_info);
+      hid_device->button_map.push_back(button_info);
 		} else if (type == kIOHIDElementTypeInput_Misc ||
         type == kIOHIDElementTypeInput_Axis) {
-      if (hid_device.axis_map.size() > 8) continue;  // TODO: Fix for PS4
+      if (hid_device->axis_map.size() > 8) continue;  // TODO: Fix for PS4
       HidAxisInfo axis_info;
-      axis_info.axis_id = hid_device.axis_map.size();
+      axis_info.axis_id = hid_device->axis_map.size();
       axis_info.cookie = IOHIDElementGetCookie(element);
       axis_info.minimum = IOHIDElementGetLogicalMin(element);
       axis_info.maximum = IOHIDElementGetLogicalMax(element);
-      hid_device.axis_map.push_back(axis_info);
+      hid_device->axis_map.push_back(axis_info);
     }
 	}
 	CFRelease(elements);
 
   // Initialize button and axis lists.
-  hid_device.device.buttons.resize(hid_device.button_map.size(), false);
-  hid_device.device.axes.resize(hid_device.axis_map.size(), 0.0f);
+  hid_device->device.buttons.resize(hid_device->button_map.size(), false);
+  hid_device->device.axes.resize(hid_device->axis_map.size(), 0.0f);
 
   // Assign device ID and notify client.
-  hid_device.device.device_id = next_device_id_++;
+  hid_device->device.device_id = next_device_id_++;
   devices_.push_back(hid_device);
   if (attached_handler_) {
-    attached_handler_(&devices_.back().device);
+    attached_handler_(&devices_.back()->device);
   }
 
   // Open HID device and attach input callback.
   IOHIDDeviceOpen(device, kIOHIDOptionsTypeNone);
+  IOHIDDeviceRegisterInputValueCallback(device, SystemImpl::HidInput, devices_.back());
   IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), RUN_LOOP_MODE_INPUT);
-  IOHIDDeviceRegisterInputValueCallback(device, SystemImpl::HidInput, this);
 }
 
 void
 SystemImpl::HidDeviceDetached(IOHIDDeviceRef device) {
   // De-allocate existing devices, fire callback later on ProcessEvents().
-  for (HidDevice& hid_device : devices_) {
-    if (hid_device.device_ref == device) {
-      HidCleanup(&hid_device);
+  for (HidDevice* hid_device : devices_) {
+    if (hid_device->device_ref == device) {
+      HidCleanup(hid_device);
       return;
     }
   }
 }
 
 void
-SystemImpl::HidDeviceInput(IOHIDValueRef value) {
-  if (!value) return;
+SystemImpl::HidDeviceInput(HidDevice* hid_device, IOHIDValueRef value) {
+  if (hid_device == nullptr || value == nullptr) return;
+
   IOHIDElementRef element = IOHIDValueGetElement(value);
   IOHIDElementCookie cookie = IOHIDElementGetCookie(element);
-  IOHIDDeviceRef device_ref = IOHIDElementGetDevice(element);
-
-  // Find device. TODO: Pass device to avoid this.
-  HidDevice* hid_device = nullptr;
-  for (HidDevice& device : devices_) {
-    if (device.device_ref == device_ref) {
-      hid_device = &device;
-      break;
-    }
-  }
-  if (hid_device == nullptr) {
-    return;
-  }
-
   const int int_value = IOHIDValueGetIntegerValue(value);
 
   // Find cookie for buttons. TODO: Provide better map to avoid lookup.

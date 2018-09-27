@@ -2,8 +2,8 @@
 #define GAMEPAD_OSX_HEADER
 #ifdef __APPLE__
 
-#include <vector>
 #include <IOKit/hid/IOHIDManager.h>
+#include <vector>
 
 #include "gamepad.h"
 
@@ -25,6 +25,7 @@ struct HidAxisInfo {
 
 struct HidDevice {
   IOHIDDeviceRef device_ref = nullptr;
+  SystemImpl* parent = nullptr;
   bool disconnected = false;
   Device device;
   std::vector<HidButtonInfo> button_map;
@@ -43,7 +44,7 @@ class SystemImpl : public System {
   void HidCleanup(HidDevice* device);
   void HidDeviceAttached(IOHIDDeviceRef device);
   void HidDeviceDetached(IOHIDDeviceRef device);
-  void HidDeviceInput(IOHIDValueRef value);
+  void HidDeviceInput(HidDevice* hid_device, IOHIDValueRef value);
 
   static void HidAttached(
       void* context, IOReturn result, void* sender, IOHIDDeviceRef device);
@@ -56,7 +57,7 @@ class SystemImpl : public System {
   bool initialized_ = false;
   int next_device_id_ = 0;
   IOHIDManagerRef hid_manager_ = nullptr;
-  std::vector<HidDevice> devices_;
+  std::vector<HidDevice*> devices_;
 };
 
 }  // namespace gamepad
