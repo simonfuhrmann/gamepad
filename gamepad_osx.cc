@@ -1,7 +1,17 @@
+/*
+ * Written by Simon Fuhrmann.
+ * See LICENSE file for details.
+ *
+ * Some resources:
+ * https://github.com/ThemsAllTook/libstem_gamepad/blob/master/source/gamepad/Gamepad_macosx.c
+ * https://github.com/inolen/redream/blob/master/deps/sdl2/src/joystick/darwin/SDL_sysjoystick.c
+ */
 #ifdef __APPLE__
 
 #include "gamepad_osx.h"
 
+#include <chrono>
+#include <thread>
 #include <iostream>
 
 #define RUN_LOOP_MODE_DISCOVERY CFSTR("RunLoopModeDiscovery")
@@ -15,13 +25,25 @@ constexpr int kHidUsageJoystick = kHIDUsage_GD_Joystick;
 constexpr int kHidUsageController = kHIDUsage_GD_MultiAxisController;
 }  // namespace
 
+SystemImpl::SystemImpl() {
+  pthread_mutex_init(&event_queue_mutex_, nullptr);
+}
+
 SystemImpl::~SystemImpl() {
+  // Cancel event thread.
+  if (event_thread_loop_ != nullptr) {
+    pthread_cancel(event_thread_);
+    event_thread_loop_ = nullptr;
+  }
+  pthread_mutex_destroy(&event_queue_mutex_);
+
   // Clean up devices.
   for (HidDevice* device : devices_) {
     HidCleanup(device);
     delete device;
   }
   devices_.clear();
+
   // Close event manager.
   if (hid_manager_ != nullptr) {
     IOHIDManagerUnscheduleFromRunLoop(hid_manager_, CFRunLoopGetCurrent(), kCFRunLoopCommonModes);
@@ -41,7 +63,10 @@ SystemImpl::ProcessEvents() {
   // calling this in a loop does not seem to make a difference. Events can get
   // swallowed either way if the device issues lots of input events and the
   // polling interval is too long.
-  CFRunLoopRunInMode(RUN_LOOP_MODE_INPUT, /*seconds=*/0, true);
+  // CFRunLoopRunInMode(RUN_LOOP_MODE_INPUT, /*seconds=*/0, true);
+
+  // Process all events.
+  HidProcessEvents();
 
   // Detach devices that have been removed.
   for (auto iter = devices_.begin(); iter != devices_.end();) {
@@ -70,6 +95,10 @@ SystemImpl::ScanForDevices() {
 
 void
 SystemImpl::HidInitialize() {
+  // Create a new thread that receives input events.
+  pthread_create(&event_thread_, nullptr, &SystemImpl::EventThreadRun, this);
+  while (event_thread_loop_ == nullptr) {}
+
   // Create he HID manager.
   hid_manager_ = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
   if (hid_manager_ == nullptr) {
@@ -154,6 +183,13 @@ SystemImpl::HidInput(void* context, IOReturn result, void* sender, IOHIDValueRef
   device->parent->HidDeviceInput(device, value);
 }
 
+void*
+SystemImpl::EventThreadRun(void* context) {
+  SystemImpl* system = static_cast<SystemImpl*>(context);
+  system->HidEventThread();
+  return nullptr;
+}
+
 void
 SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   // Get vendor and product ID.
@@ -189,32 +225,50 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   hid_device->device.description = device_name;
 
   // Scan buttons and axes.
+  int max_cookie_id = 0;
   CFArrayRef elements = IOHIDDeviceCopyMatchingElements(device, nullptr, kIOHIDOptionsTypeNone);
 	for (int i = 0; i < CFArrayGetCount(elements); i++) {
 		IOHIDElementRef element = (IOHIDElementRef)CFArrayGetValueAtIndex(elements, i);
 		IOHIDElementType type = IOHIDElementGetType(element);
 
+    const uint32_t usagePage = IOHIDElementGetUsagePage(element);
+    //const uint32_t usage = IOHIDElementGetUsage(element);
+    if (usagePage != kHIDPage_GenericDesktop &&
+        usagePage != kHIDPage_Button) {
+      continue;
+    }
+
     if (type == kIOHIDElementTypeInput_Button) {
       HidButtonInfo button_info;
-      button_info.button_id = hid_device->button_map.size();
+      button_info.button_id = hid_device->button_infos.size();
       button_info.cookie = IOHIDElementGetCookie(element);
-      hid_device->button_map.push_back(button_info);
+      hid_device->button_infos.push_back(button_info);
+      max_cookie_id = std::max(max_cookie_id, button_info.cookie);
 		} else if (type == kIOHIDElementTypeInput_Misc ||
         type == kIOHIDElementTypeInput_Axis) {
-      if (hid_device->axis_map.size() > 8) continue;  // TODO: Fix for PS4
       HidAxisInfo axis_info;
-      axis_info.axis_id = hid_device->axis_map.size();
+      axis_info.axis_id = hid_device->axis_infos.size();
       axis_info.cookie = IOHIDElementGetCookie(element);
       axis_info.minimum = IOHIDElementGetLogicalMin(element);
       axis_info.maximum = IOHIDElementGetLogicalMax(element);
-      hid_device->axis_map.push_back(axis_info);
+      hid_device->axis_infos.push_back(axis_info);
+      max_cookie_id = std::max(max_cookie_id, axis_info.cookie);
     }
 	}
 	CFRelease(elements);
 
   // Initialize button and axis lists.
-  hid_device->device.buttons.resize(hid_device->button_map.size(), false);
-  hid_device->device.axes.resize(hid_device->axis_map.size(), 0.0f);
+  hid_device->device.buttons.resize(hid_device->button_infos.size(), false);
+  hid_device->device.axes.resize(hid_device->axis_infos.size(), 0.0f);
+
+  // Create a lookup table from cookie ID to axis/button ID.
+  hid_device->cookie_map.resize(max_cookie_id + 1);
+  for (const HidButtonInfo& button : hid_device->button_infos) {
+    hid_device->cookie_map[button.cookie].button_id = button.button_id;
+  }
+  for (const HidAxisInfo& axis : hid_device->axis_infos) {
+    hid_device->cookie_map[axis.cookie].axis_id = axis.axis_id;
+  }
 
   // Assign device ID and notify client.
   hid_device->device.device_id = next_device_id_++;
@@ -226,7 +280,9 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   // Open HID device and attach input callback.
   IOHIDDeviceOpen(device, kIOHIDOptionsTypeNone);
   IOHIDDeviceRegisterInputValueCallback(device, SystemImpl::HidInput, devices_.back());
-  IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), RUN_LOOP_MODE_INPUT);
+  // Schedule event handling on a separate thread.
+  //IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), RUN_LOOP_MODE_INPUT);
+  IOHIDDeviceScheduleWithRunLoop(device, event_thread_loop_, kCFRunLoopDefaultMode);
 }
 
 void
@@ -248,23 +304,86 @@ SystemImpl::HidDeviceInput(HidDevice* hid_device, IOHIDValueRef value) {
   IOHIDElementCookie cookie = IOHIDElementGetCookie(element);
   const int int_value = IOHIDValueGetIntegerValue(value);
 
-  // Find cookie for buttons. TODO: Provide better map to avoid lookup.
-  for (std::size_t i = 0; i < hid_device->button_map.size(); ++i) {
-    HidButtonInfo& button_info = hid_device->button_map[i];
-    if (button_info.cookie == cookie) {
-      HandleButtonEvent(&hid_device->device, button_info.button_id, int_value);
-      return;
-    }
+  // Reject events with cookies that are not mapped.
+  if (cookie >= hid_device->cookie_map.size()) {
+    return;
+  }
+  const HidCookieInfo& cookie_info = hid_device->cookie_map[cookie];
+  if (cookie_info.axis_id < 0 && cookie_info.button_id < 0) {
+    return;
   }
 
-  // Find cookie for axes. TODO: Provide better map to avoid lookup.
-  for (std::size_t i = 0; i < hid_device->axis_map.size(); ++i) {
-    HidAxisInfo& axis_info = hid_device->axis_map[i];
-    if (axis_info.cookie == cookie) {
-      HandleAxisEvent(&hid_device->device, axis_info.axis_id, int_value,
-          axis_info.minimum, axis_info.maximum, 0, 0);
-      return;
-    }
+  pthread_mutex_lock(&event_queue_mutex_);
+  // Queue the event for processing in the main thread.
+  event_queue_.push(HidEvent());
+  event_queue_.back().device = hid_device;
+  event_queue_.back().axis_id = cookie_info.axis_id;
+  event_queue_.back().button_id = cookie_info.button_id;
+  event_queue_.back().value = int_value;
+  // If the event queue has grown too large, compress the queue.
+  if (event_queue_.size() > 1024) {
+    HidCompressQueue();
+  }
+  pthread_mutex_unlock(&event_queue_mutex_);
+}
+
+void
+SystemImpl::HidCompressQueue() {
+  std::cout << "Compressing event queue (size " << event_queue_.size()
+      << ")..." << std::endl;
+  pthread_mutex_lock(&event_queue_mutex_);
+  // TODO
+  while (!event_queue_.empty())
+    event_queue_.pop();
+  pthread_mutex_unlock(&event_queue_mutex_); 
+}
+
+void
+SystemImpl::HidProcessEvents() {
+  // Limit event processing to the events currently in the queue. This
+  // potentially prevents running this function forever if event generation is
+  // faster than processing.
+  pthread_mutex_lock(&event_queue_mutex_);
+  std::size_t num_events = event_queue_.size();
+  pthread_mutex_unlock(&event_queue_mutex_);
+  while (num_events > 0) {
+    // Get an event from the queue and decrement the number of events that
+    // still need to be processed. Since event queue compression may happen in
+    // the background if the queue gets too long, limit by actual queue size.
+    // Compression will always leave at least one element in the queue.
+    pthread_mutex_lock(&event_queue_mutex_);
+    HidEvent event = event_queue_.front();
+    event_queue_.pop();
+    num_events = std::min(num_events - 1, event_queue_.size());
+    pthread_mutex_unlock(&event_queue_mutex_);
+    HidProcessEvent(event);
+  }
+}
+
+void
+SystemImpl::HidProcessEvent(const HidEvent& event) {
+  HidDevice* device = event.device;
+  if (event.button_id >= 0) {
+    const HidButtonInfo& button_info = device->button_infos[event.button_id];
+    HandleButtonEvent(&device->device, event.button_id, event.value);
+  } else if (event.axis_id >= 0) {
+    const HidAxisInfo& axis_info = device->axis_infos[event.axis_id];
+    HandleAxisEvent(&device->device, event.axis_id, event.value,
+        axis_info.minimum, axis_info.maximum, axis_info.fuzz, axis_info.flat);
+  }
+}
+
+void
+SystemImpl::HidEventThread() {
+  // Export this thread's run loop.
+  event_thread_loop_ = CFRunLoopGetCurrent();
+
+  // Run the run loop indefinitely. CFRunLoopRun() must be called in a loop
+  // as CFRunLoopRun() will return if it does not contain any sources (i.e.,
+  // when no devices are attached). Sleep to not busy-loop.
+  while (true) {
+    CFRunLoopRun();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
 
