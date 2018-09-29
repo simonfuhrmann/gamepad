@@ -1,3 +1,7 @@
+/*
+ * Written by Simon Fuhrmann.
+ * See LICENSE file for details.
+ */
 #include "gamepad.h"
 
 #include <iostream>

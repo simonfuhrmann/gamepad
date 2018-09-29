@@ -1,3 +1,7 @@
+/*
+ * Written by Simon Fuhrmann.
+ * See LICENSE file for details.
+ */
 #ifdef __linux__
 
 #include "gamepad_linux.h"

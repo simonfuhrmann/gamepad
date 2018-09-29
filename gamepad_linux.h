@@ -1,3 +1,7 @@
+/*
+ * Written by Simon Fuhrmann.
+ * See LICENSE file for details.
+ */
 #ifndef GAMEPAD_LINUX_HEADER
 #define GAMEPAD_LINUX_HEADER
 #ifdef __linux__

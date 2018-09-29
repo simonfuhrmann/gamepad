@@ -1,3 +1,7 @@
+/*
+ * Written by Simon Fuhrmann.
+ * See LICENSE file for details.
+ */
 #include <iostream>
 #include <chrono>
 #include <thread>
