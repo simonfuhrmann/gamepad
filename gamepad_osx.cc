@@ -15,7 +15,6 @@
 #include <iostream>
 
 #define RUN_LOOP_MODE_DISCOVERY CFSTR("RunLoopModeDiscovery")
-#define RUN_LOOP_MODE_INPUT CFSTR("RunLoopModeInput")
 
 namespace gamepad {
 namespace {
@@ -55,17 +54,7 @@ SystemImpl::~SystemImpl() {
 
 void
 SystemImpl::ProcessEvents() {
-  if (!initialized_) {
-    HidInitialize();
-  }
-
-  // RunLoop for event handling. This processes more than one event, and
-  // calling this in a loop does not seem to make a difference. Events can get
-  // swallowed either way if the device issues lots of input events and the
-  // polling interval is too long.
-  // CFRunLoopRunInMode(RUN_LOOP_MODE_INPUT, /*seconds=*/0, true);
-
-  // Process all events.
+  // Process all events in the queue.
   HidProcessEvents();
 
   // Detach devices that have been removed.
@@ -281,7 +270,6 @@ SystemImpl::HidDeviceAttached(IOHIDDeviceRef device) {
   IOHIDDeviceOpen(device, kIOHIDOptionsTypeNone);
   IOHIDDeviceRegisterInputValueCallback(device, SystemImpl::HidInput, devices_.back());
   // Schedule event handling on a separate thread.
-  //IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), RUN_LOOP_MODE_INPUT);
   IOHIDDeviceScheduleWithRunLoop(device, event_thread_loop_, kCFRunLoopDefaultMode);
 }
 
@@ -313,13 +301,15 @@ SystemImpl::HidDeviceInput(HidDevice* hid_device, IOHIDValueRef value) {
     return;
   }
 
+  HidEvent event;
+  event.device = hid_device;
+  event.axis_id = cookie_info.axis_id;
+  event.button_id = cookie_info.button_id;
+  event.value = int_value;
+
   pthread_mutex_lock(&event_queue_mutex_);
   // Queue the event for processing in the main thread.
-  event_queue_.push(HidEvent());
-  event_queue_.back().device = hid_device;
-  event_queue_.back().axis_id = cookie_info.axis_id;
-  event_queue_.back().button_id = cookie_info.button_id;
-  event_queue_.back().value = int_value;
+  event_queue_.push(event);
   // If the event queue has grown too large, compress the queue.
   if (event_queue_.size() > 1024) {
     HidCompressQueue();
